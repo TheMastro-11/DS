@@ -20,10 +20,7 @@ base_locations = [
     {"name": "Osp. Santissima Trinità", "coords": (39.235543, 9.108285)},
     {"name": "Osp. Brotzu", "coords": (39.248497, 9.108608)},
     {"name": "Osp. Businco", "coords": (39.245257, 9.114284)},
-    {"name": "Cittadella Universitaria", "coords": (39.270027, 9.124389)}
-]
-
-extra_locations = [
+    {"name": "Cittadella Universitaria", "coords": (39.270027, 9.124389)},
     {"name": "Bastione Saint Remy", "coords": (39.2155, 9.1165)},
     {"name": "Anfiteatro Romano", "coords": (39.2238, 9.1098)},
     {"name": "Orto Botanico", "coords": (39.2230, 9.1080)},
@@ -75,8 +72,7 @@ extra_locations = [
     {"name": "Necropoli Tuvixeddu", "coords": (39.2280, 9.1020)}
 ]
 
-all_locations_raw = base_locations + extra_locations
-all_locations_raw = all_locations_raw[:50] 
+all_locations_raw = base_locations[:50] 
 
 locations = []
 for idx, loc in enumerate(all_locations_raw):
@@ -141,6 +137,7 @@ def plot_solution_on_map(client, locations, edges, total_time_min, total_distanc
             coords = route['features'][0]['geometry']['coordinates']
             route_line = LineString(coords)
             route_geometries.append(route_line)
+            time.sleep(0.5)
         except Exception as e:
             route_geometries.append(LineString([start_coords, end_coords]))
 
