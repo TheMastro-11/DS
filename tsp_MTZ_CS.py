@@ -43,7 +43,7 @@ base_locations = [
     {"name": "Poetto - 6a Fermata", "coords": (39.2208, 9.1876)},
     {"name": "Ospedale Marino", "coords": (39.2137, 9.1748)},
     {"name": "Faro Sant'Elia", "coords": (39.1846, 9.1476)},
-    {"name": "Castello San Michele (Ingresso Sud)", "coords": (39.2420, 9.1050)},
+    {"name": "Palazzo Regio", "coords": (39.2197, 9.1172)},
     {"name": "Parco Terramaini", "coords": (39.2450, 9.1350)},
     {"name": "C.C. Santa Gilla", "coords": (39.2300, 9.0950)},
     {"name": "Aeroporto Elmas (P)", "coords": (39.2520, 9.0560)},
