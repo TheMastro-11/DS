@@ -150,10 +150,12 @@ dove \(\delta^{+}(S)\) è l’insieme degli archi che escono da \(S\).
 
 Poiché il numero di sottoinsiemi \(S\) cresce esponenzialmente, tali vincoli non vengono generati tutti a priori, ma aggiunti \textit{on demand} tramite una procedura di separazione basata su problemi di Flusso Massimo / Taglio Minimo.
 
-\subsection{Separazione tramite Max-Flow / Min-Cut}
+\subsection{Separazione tramite componenti fortemente connesse}
 
-Il problema di separazione consiste nell’individuare, a partire da una soluzione frazionaria \(\{x^*_{ij}\}\), se esiste un sottoinsieme \(S\) che viola un vincolo SEC.
-Interpretando i valori \(x^*_{ij}\) come capacità degli archi, si calcola per ogni coppia di nodi un taglio minimo; se per qualche taglio la capacità risulta minore di 1, il corrispondente insieme \(S\) definisce un vincolo SEC violato da aggiungere al modello.
+Il problema di separazione consiste nell’individuare, a partire da una soluzione \(\{x^*_{ij}\}\), se esiste un sottoinsieme \(S\) che viola un vincolo SEC.
+L’approccio canonico della letteratura interpreta i valori \(x^*_{ij}\) come capacità e calcola un taglio minimo (Max-Flow / Min-Cut) per ogni coppia di nodi; se la capacità del taglio è inferiore a 1, l’insieme \(S\) definisce un vincolo SEC violato.
+
+Nell’implementazione realizzata si adotta una strategia più semplice e diretta: il grafo di supporto viene costruito dagli archi con \(x^*_{ij}>0.01\) e si calcolano le \textbf{componenti fortemente connesse} (SCC) tramite la libreria \texttt{networkx}. Ogni componente \(S\) con \(1 < |S| < n\) individua un sottotour che viola il vincolo SEC corrispondente, il quale viene aggiunto al modello. Questo approccio è equivalente al Min-Cut sulle soluzioni intere (dove i valori sono in \(\{0,1\}\)) e si dimostra sufficientemente efficace anche sulle soluzioni frazionarie del rilassamento LP.
 
 \newpage
 % -------------------------------------------------------------------
@@ -195,20 +197,22 @@ La soluzione fornisce un bound inferiore iniziale e un tempo di calcolo dell’o
 
 \subsubsection*{Aggiunta dei tagli (Step 2)}
 
-Nel secondo step il rilassamento viene risolto più volte: a ogni iterazione la soluzione frazionaria viene interpretata come un grafo con capacità pari a $x^*_{ij}$ e si applica una procedura di separazione basata su taglio minimo (Min-Cut). Per ciascun nodo $k\neq 0$ si calcola un taglio minimo che separa $k$ dal deposito; se la capacità del taglio è minore di 1, l'insieme $S$ sul lato della sorgente individua un vincolo SEC violato del tipo $\sum_{i\in S,\,j\notin S} x_{ij}\ge 1$, che viene aggiunto come \textit{user cut}. Il processo prosegue fino a quando non vengono trovate ulteriori violazioni o fino a un numero massimo di iterazioni.
+Nel secondo step il rilassamento viene risolto più volte: a ogni iterazione viene costruito un grafo orientato di supporto dagli archi con $x^*_{ij}>0.01$ e si calcolano le \textbf{componenti fortemente connesse} (SCC) tramite \texttt{networkx.strongly\_connected\_components}. Ogni componente $S$ con $1<|S|<n$ individua un sottotour e il corrispondente vincolo SEC violato $\sum_{i\in S,\,j\notin S} x_{ij}\ge 1$ viene aggiunto al modello come \textit{user cut}. Il processo prosegue fino a quando non vengono trovate ulteriori violazioni o fino a un numero massimo di 15 iterazioni.
 
 \subsubsection*{Soluzione intera (Step 3)}
 
-Nello step finale viene risolto un modello intero con variabili binarie $x_{ij}$. Quando il solver trova una soluzione intera che contiene più cicli disgiunti, tali sottotour vengono individuati tramite componenti fortemente connesse sul grafo degli archi selezionati e i corrispondenti vincoli SEC vengono aggiunti come \textit{lazy constraints}. In questo modo si ottiene un vero algoritmo Branch-and-Cut.
-Al termine si ottiene un tour hamiltoniano unico: il codice ricostruisce la sequenza ordinata degli archi a partire dal deposito, calcola la distanza totale in metri (\texttt{step3\_integer\_solution}) e il tempo complessivo di percorrenza sommando le durate su ciascun arco (\texttt{final\_time}).
+Nello step finale viene risolto un modello intero con variabili binarie $x_{ij}$. Quando il solver trova una soluzione intera che contiene più cicli disgiunti, tali sottotour vengono individuati tramite SCC sul grafo degli archi selezionati e i corrispondenti vincoli SEC vengono aggiunti come \textit{lazy constraints}. In questo modo si ottiene un vero algoritmo Branch-and-Cut.
+Al termine si ottiene un tour hamiltoniano unico: il codice ricostruisce la sequenza ordinata degli archi a partire dal nodo deposito fisico (\texttt{Deposito (Via S. Paolo)}, indice 28), calcola la distanza totale in metri (\texttt{step3\_integer\_solution}) e il tempo complessivo di percorrenza sommando le durate su ciascun arco (\texttt{final\_time}).
+
+La funzione \texttt{solve\_cutset\_with\_callbacks} offre una variante che sfrutta le callback CPLEX (\textit{LazyConstraintCallback} e \textit{UserCutCallback}) per iniettare i vincoli SEC direttamente durante il Branch-and-Bound, riducendo il numero di nodi esplorati. Qualora le callback non siano disponibili nell'ambiente di esecuzione, la funzione ricade automaticamente in una modalità fallback che esegue lo stesso schema iterativo dello Step 3 descritto sopra.
 
 \subsection{Formulazione MTZ}
 
-La funzione \texttt{solve\_mtz} implementa la formulazione di Miller–Tucker–Zemlin, composta da un rilassamento continuo e da un modello intero con vincoli MTZ.  
-Nel rilassamento si introducono variabili di posizionamento \(u_i\in[0,n-1]\) e vincoli \(u_i - u_j + n x_{ij} \le n-1\) per tutti i nodi diversi dal deposito, ottenendo un bound continuo alternativo rispetto alla formulazione a tagli. 
+La funzione \texttt{solve\_mtz} implementa la formulazione di Miller–Tucker–Zemlin, composta da un rilassamento continuo e da un modello intero con vincoli MTZ.
+Nel rilassamento si introducono variabili di posizionamento \(u_i\in[0,n-1]\) e vincoli \(u_i - u_j + n x_{ij} \le n-1\) per tutti i nodi diversi dal deposito fisico (\texttt{Deposito (Via S. Paolo)}, indice 28), ottenendo un bound continuo alternativo rispetto alla formulazione a tagli. Il nodo deposito è escluso dai vincoli MTZ poiché funge da radice del tour e non richiede una variabile di ordinamento.
 
 Per la soluzione intera, il modello MTZ viene ricostruito con variabili binarie e risolto con un limite di tempo di 300 secondi, registrando l’eventuale valore ottimo e il tempo necessario.
-Nel caso con 50 nodi il bound continuo MTZ risulta di circa \(100\,089\) m, mentre la soluzione intera richiede l’intero time limit per raggiungere il valore dell’ottimo trovato con il Cut-Set.
+Nel caso con 50 nodi il bound continuo MTZ risulta di \(104\,007.81\) m, mentre la soluzione intera richiede l’intero time limit per raggiungere il valore dell’ottimo trovato con il Cut-Set.
 
 \subsection{Visualizzazione geospaziale}
 

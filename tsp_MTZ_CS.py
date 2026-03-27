@@ -22,8 +22,6 @@ except Exception:
 
 api_key = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjYwM2NhMmFjM2ExYzI1MTJlZGY2YjNjZjJjMDIxNjQ3NGQ5ZjNkZmRkZWU0Nzc4NzNiMTc3MjIwIiwiaCI6Im11cm11cjY0In0='
 
-if not api_key:
-    raise RuntimeError("Missing ORS_API_KEY environment variable")
 
 
 # --- DEFINIZIONE LOCATION ---
@@ -45,7 +43,7 @@ base_locations = [
     {"name": "Poetto - 6a Fermata", "coords": (39.2208, 9.1876)},
     {"name": "Ospedale Marino", "coords": (39.2137, 9.1748)},
     {"name": "Faro Sant'Elia", "coords": (39.1846, 9.1476)},
-    {"name": "Castello San Michele", "coords": (39.2420, 9.1050)},
+    {"name": "Castello San Michele (Ingresso Sud)", "coords": (39.2420, 9.1050)},
     {"name": "Parco Terramaini", "coords": (39.2450, 9.1350)},
     {"name": "C.C. Santa Gilla", "coords": (39.2300, 9.0950)},
     {"name": "Aeroporto Elmas (P)", "coords": (39.2520, 9.0560)},
@@ -100,6 +98,9 @@ for idx, loc in enumerate(all_locations_raw):
 n = len(locations)
 cities = [i for i in range(n)]
 arcs = [(i, j) for i in cities for j in cities if i != j]
+
+# Indice del deposito fisico ("Deposito (Via S. Paolo)")
+depot_id = next(i for i, loc in enumerate(locations) if loc["name"] == "Deposito (Via S. Paolo)")
 
 print(f"--- Configurazione ---")
 print(f"Totale Nodi: {n} (Limitato a 50 per compatibilità API Free)")
@@ -172,16 +173,20 @@ def solve_cutset_with_callbacks(dist_matrix, dur_matrix, locations, log_output: 
             if len(comps_int) == 1:
                 results['integer_solution'] = sol.objective_value
                 ordered_edges = []
-                curr = 0
+                curr = depot_id
                 visited = 0
                 while visited < n:
+                    moved = False
                     for j in cities:
                         if j != curr and x[(curr, j)].solution_value > 0.9:
                             ordered_edges.append((curr, j))
                             results['final_time'] += dur_matrix[curr][j]
                             curr = j
                             visited += 1
+                            moved = True
                             break
+                    if not moved:
+                        break
                 results['final_edges'] = ordered_edges
                 break
             for comp in comps_int:
@@ -256,16 +261,20 @@ def solve_cutset_with_callbacks(dist_matrix, dur_matrix, locations, log_output: 
     if sol:
         results['integer_solution'] = sol.objective_value
         ordered_edges = []
-        curr = 0
+        curr = depot_id
         visited = 0
         while visited < n:
+            moved = False
             for j in cities:
                 if j != curr and x[(curr, j)].solution_value > 0.9:
                     ordered_edges.append((curr, j))
                     results['final_time'] += dur_matrix[curr][j]
                     curr = j
                     visited += 1
+                    moved = True
                     break
+            if not moved:
+                break
         results['final_edges'] = ordered_edges
     return results
 
@@ -514,16 +523,20 @@ def solve_cutset_with_tracking(dist_matrix, dur_matrix, locations):
             results['step3_integer_solution'] = sol_int.objective_value
             # Ricostruzione path
             ordered_edges = []
-            curr = 0
+            curr = depot_id
             visited = 0
             while visited < n:
+                moved = False
                 for j in cities:
                     if j != curr and x_int[(curr, j)].solution_value > 0.9:
                         ordered_edges.append((curr, j))
                         results['final_time'] += dur_matrix[curr][j]
                         curr = j
                         visited += 1
+                        moved = True
                         break
+                if not moved:
+                    break
             results['final_edges'] = ordered_edges
             break
         else:
@@ -565,8 +578,9 @@ def solve_mtz(dist_matrix, dur_matrix, locations):
         mdl_mtz.add_constraint(mdl_mtz.sum(x[(i, j)] for j in cities if i != j) == 1)
         mdl_mtz.add_constraint(mdl_mtz.sum(x[(j, i)] for j in cities if i != j) == 1)
 
-    for i in cities[1:]:
-        for j in cities[1:]:
+    cities_non_depot = [i for i in cities if i != depot_id]
+    for i in cities_non_depot:
+        for j in cities_non_depot:
             if i != j:
                 mdl_mtz.add_constraint(u[i] - u[j] + n * x[(i, j)] <= n - 1)
 
@@ -582,7 +596,6 @@ def solve_mtz(dist_matrix, dur_matrix, locations):
     print("\n[MTZ - Calcolo Soluzione Intera...]")
     t0 = time.time()
     
-    mdl_mtz.clear_constraints()
     mdl_mtz_int = Model('TSP_MTZ_Int')
     x_int = mdl_mtz_int.binary_var_dict(arcs, name='x')
     u_int = mdl_mtz_int.continuous_var_dict(cities, lb=0, ub=n-1, name='u')
@@ -593,13 +606,13 @@ def solve_mtz(dist_matrix, dur_matrix, locations):
         mdl_mtz_int.add_constraint(mdl_mtz_int.sum(x_int[(i, j)] for j in cities if i != j) == 1)
         mdl_mtz_int.add_constraint(mdl_mtz_int.sum(x_int[(j, i)] for j in cities if i != j) == 1)
         
-    for i in cities[1:]:
-        for j in cities[1:]:
+    for i in cities_non_depot:
+        for j in cities_non_depot:
             if i != j:
                 mdl_mtz_int.add_constraint(u_int[i] - u_int[j] + n * x_int[(i, j)] <= n - 1)
     
     mdl_mtz_int.set_time_limit(300) # 300 secondi max
-    sol_int = mdl_mtz_int.solve(log_output=True)
+    sol_int = mdl_mtz_int.solve(log_output=False)
     results['int_kpis'] = extract_kpis(mdl_mtz_int)
     
     results['int_time'] = time.time() - t0
@@ -697,9 +710,9 @@ def generate_comparison_outputs(cutset, mtz):
     df_out = format_table_for_rendering(df)
     print(df_out.to_string(index=False))
 
-    df_out.to_csv('Risultati_Confronto_CutSet_MTZ.csv', index=False)
-    print("--- CSV salvato in: Risultati_Confronto_CutSet_MTZ.csv ---")
-    
+    df.to_json('Risultati_Confronto_CutSet_MTZ.json', orient='records', indent=2)
+    print("--- JSON salvato in: Risultati_Confronto_CutSet_MTZ.json ---")
+
     # Salva PNG Tabella Principale
     save_table_img(df_out, "Confronto Cut-Set vs MTZ (Bound & Tempi)", "Tabella_Confronto_Risultati.png")
     
@@ -761,17 +774,13 @@ def generate_tree_kpi_table(cutset_tracking, cutset_callbacks, mtz):
     print(f"{'KPI ALBERO BRANCH-AND-BOUND':^80}")
     print("=" * 80)
     print(df.to_string(index=False))
-    df.to_csv('KPI_Albero_BranchAndBound.csv', index=False)
-    print("--- CSV salvato in: KPI_Albero_BranchAndBound.csv ---")
+    df.to_json('KPI_Albero_BranchAndBound.json', orient='records', indent=2)
+    print("--- JSON salvato in: KPI_Albero_BranchAndBound.json ---")
     save_table_img(df, "KPI Albero Branch-and-Bound", "Tabella_KPI_Albero_BnB.png")
 
 # --- MAIN ---
 
 if __name__ == "__main__":
-    if not api_key:
-        print("ERRORE: Imposta la variabile d'ambiente ORS_API_KEY.")
-        sys.exit(1)
-
     print("Calcolo matrici (Distanza e Tempo) tramite OpenRouteService...")
     try:
         client = openrouteservice.Client(key=api_key)
