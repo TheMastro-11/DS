@@ -1,0 +1,8 @@
+openrouteservice==2.3.3
+docplex==2.32.262
+networkx==3.6.1
+geopandas==1.1.3
+shapely==2.1.2
+contextily==1.7.0
+matplotlib==3.10.8
+pandas==3.0.1
