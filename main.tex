@@ -1,0 +1,292 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[italian]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{float}
+
+% --- PACCHETTI PER CODICE PYTHON ---
+\usepackage{listings}
+\usepackage{xcolor}
+
+% Definizione colori per il codice
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Stile codice Python
+\lstdefinestyle{mystyle}{
+  backgroundcolor=\color{backcolour},
+  commentstyle=\color{codegreen},
+  keywordstyle=\color{magenta},
+  numberstyle=\tiny\color{codegray},
+  stringstyle=\color{codepurple},
+  basicstyle=\ttfamily\footnotesize,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  numbers=left,
+  numbersep=5pt,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=2,
+  language=Python
+}
+\lstset{style=mystyle}
+% -----------------------------------
+
+% Configurazione margini
+\geometry{
+  a4paper,
+  total={170mm,257mm},
+  left=25mm,
+  top=25mm,
+}
+
+% Configurazione link
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  filecolor=magenta,
+  urlcolor=blue,
+}
+
+\title{}
+\author{}
+
+\begin{document}
+
+% -------------------------------------------------------------------
+% FRONTESPIZIO
+% -------------------------------------------------------------------
+\begin{titlepage}
+\centering
+\includegraphics[width=0.4\textwidth]{unica_800_black.png}\par
+\vspace{1.5cm}
+{\huge \textbf{Università degli Studi di Cagliari}\par}
+\vspace{1cm}
+{\Large Facoltà di Scienze\par}
+{\Large Corso di Laurea Magistrale in Informatica\par}
+\vspace{1.7cm}
+{\Huge\bfseries Confronto di algoritmi di ottimizzazione di percorsi reali su rete stradale\par}
+\vspace{1.5cm}
+{\Large Applicazione del Branch-and-Cut per la risoluzione \\ del Traveling Salesman Problem \par}
+\vspace{2cm}
+\begin{minipage}{0.45\textwidth}
+\begin{flushleft} \large
+\textbf{Docente:}\\
+Massimo \textsc{Di Francesco}
+\end{flushleft}
+\end{minipage}
+\hfill
+\begin{minipage}{0.45\textwidth}
+\begin{flushright} \large
+\textbf{Candidati:}\\
+Salvatore Luigi Dettori \\
+Mattia Piras
+\end{flushright}
+\end{minipage}
+
+\vfill
+{\large Anno Accademico 2024-2025\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% -------------------------------------------------------------------
+\section{Introduzione}
+
+Il problema del commesso viaggiatore (Traveling Salesman Problem o TSP) è uno dei problemi più noti e studiati nell'ambito della ricerca operativa e dell'ottimizzazione combinatoria.
+La sfida consiste nel trovare il percorso più breve che permetta di visitare un insieme di luoghi esattamente una volta e ritornare al punto di partenza, tecnicamente definito come ciclo hamiltoniano.
+
+In questa tesina viene analizzato un caso reale ambientato a Cagliari, in cui si vuole ottimizzare il percorso di un veicolo che rifornisce distributori di bevande in vari punti strategici (deposito, poli universitari, strutture ospedaliere) e in ulteriori punti di interesse dell’area metropolitana.
+Per risolvere il problema viene implementato un algoritmo basato sul metodo \textbf{Branch-and-Cut}, che gestisce dinamicamente i vincoli di connettività (Subtour Elimination Constraints, SEC) sfruttando la struttura di un grafo stradale reale ottenuto tramite il servizio \texttt{OpenRouteService}.
+
+% -------------------------------------------------------------------
+\section{Approccio Teorico}
+
+\subsection{Formulazione matematica del TSP}
+
+Il TSP viene modellato come problema di Programmazione Lineare Intera su un grafo orientato \(G=(N,A)\), dove \(N\) è l’insieme dei nodi (località) e \(A\) l’insieme degli archi; a ciascun arco \((i,j)\) è associato un costo \(c_{ij}\) pari alla distanza stradale fra i due punti.  
+Le variabili decisionali sono binarie e indicano la presenza dell’arco nel tour:
+\[
+x_{ij} =
+\begin{cases}
+1 & \text{se l'arco } (i,j) \text{ è incluso nel percorso}\\
+0 & \text{altrimenti.}
+\end{cases}
+\]
+
+La funzione obiettivo minimizza il costo totale:
+\[
+\min \sum_{(i,j)\in A} c_{ij} x_{ij},
+\]
+mentre i vincoli di grado impongono che ogni nodo abbia esattamente un arco entrante e uno uscente:
+\[
+\sum_{j\in N,\,j\neq i} x_{ij}=1 \quad \forall i\in N,
+\qquad
+\sum_{i\in N,\,i\neq j} x_{ij}=1 \quad \forall j\in N.
+\]
+
+\subsection{Connettività e vincoli SEC}
+
+I soli vincoli di grado non garantiscono l’esistenza di un unico ciclo che copre tutti i nodi, poiché la soluzione può frammentarsi in più sottotour disgiunti.  
+Per assicurare la connettività vengono introdotti i \textit{Subtour Elimination Constraints}:
+\[
+\sum_{(i,j)\in\delta^{+}(S)} x_{ij} \ge 1 \qquad \forall S\subset N,\,S\neq\emptyset,
+\]
+dove \(\delta^{+}(S)\) è l’insieme degli archi che escono da \(S\). 
+
+Poiché il numero di sottoinsiemi \(S\) cresce esponenzialmente, tali vincoli non vengono generati tutti a priori, ma aggiunti \textit{on demand} tramite una procedura di separazione basata su problemi di Flusso Massimo / Taglio Minimo.
+
+\subsection{Separazione tramite Max-Flow / Min-Cut}
+
+Il problema di separazione consiste nell’individuare, a partire da una soluzione frazionaria \(\{x^*_{ij}\}\), se esiste un sottoinsieme \(S\) che viola un vincolo SEC.
+Interpretando i valori \(x^*_{ij}\) come capacità degli archi, si calcola per ogni coppia di nodi un taglio minimo; se per qualche taglio la capacità risulta minore di 1, il corrispondente insieme \(S\) definisce un vincolo SEC violato da aggiungere al modello.
+
+\newpage
+% -------------------------------------------------------------------
+\section{Implementazione Software}
+
+\subsection{Definizione dei dati e matrici reali}
+
+Lo script \texttt{tsp\_MTZ\_CS.py} definisce inizialmente l’elenco delle località come lista di dizionari contenenti nome, ID e coordinate geografiche in formato latitudine–longitudine.
+Vengono considerati in totale 50 nodi.
+
+Nel blocco principale il programma istanzia un oggetto \texttt{openrouteservice.Client} e richiama l’API \texttt{distance\_matrix} per ottenere sia le distanze sia le durate tra tutte le coppie di località, nel profilo \texttt{driving-car}. 
+Le matrici risultanti, \texttt{dist\_matrix} e \texttt{dur\_matrix}, rappresentano rispettivamente i costi e i tempi di percorrenza che alimentano i modelli ILP.
+
+\begin{lstlisting}[caption={Richiesta matrici reali tramite API OpenRouteService},label={lst:api}]
+try:
+    client = openrouteservice.Client(key=api_key)
+    coords_for_api = [[loc["coords"][1], loc["coords"][0]] for loc in locations]
+    matrix_response = client.distance_matrix(
+        locations=coords_for_api,
+        profile='driving-car',
+        metrics=['distance', 'duration'],
+        units='m'
+    )
+    dist_matrix = matrix_response['distances']
+    dur_matrix = matrix_response['durations']
+except Exception as e:
+    print(f"Errore API: {e}")
+    sys.exit(1)
+\end{lstlisting}
+
+\subsection{Formulazione Cut-Set e Branch-and-Cut}
+
+La funzione \texttt{solve\_cutset\_with\_tracking} implementa la formulazione Cut-Set in tre step: rilassamento lineare, aggiunta iterativa dei tagli e soluzione intera finale.
+
+\subsubsection*{Rilassamento lineare (Step 1)}
+
+Nel primo step si costruisce un modello con variabili continue \(x_{ij}\in[0,1]\) e soli vincoli di grado, che rappresenta il rilassamento di assegnamento. 
+La soluzione fornisce un bound inferiore iniziale e un tempo di calcolo dell’ordine di pochi centesimi di secondo, memorizzati in \texttt{step1\_lp\_bound} e \texttt{step1\_time}.
+
+\subsubsection*{Aggiunta dei tagli (Step 2)}
+
+Nel secondo step il rilassamento viene risolto più volte: a ogni iterazione la soluzione frazionaria viene interpretata come un grafo con capacità pari a $x^*_{ij}$ e si applica una procedura di separazione basata su taglio minimo (Min-Cut). Per ciascun nodo $k\neq 0$ si calcola un taglio minimo che separa $k$ dal deposito; se la capacità del taglio è minore di 1, l'insieme $S$ sul lato della sorgente individua un vincolo SEC violato del tipo $\sum_{i\in S,\,j\notin S} x_{ij}\ge 1$, che viene aggiunto come \textit{user cut}. Il processo prosegue fino a quando non vengono trovate ulteriori violazioni o fino a un numero massimo di iterazioni.
+
+\subsubsection*{Soluzione intera (Step 3)}
+
+Nello step finale viene risolto un modello intero con variabili binarie $x_{ij}$. Quando il solver trova una soluzione intera che contiene più cicli disgiunti, tali sottotour vengono individuati tramite componenti fortemente connesse sul grafo degli archi selezionati e i corrispondenti vincoli SEC vengono aggiunti come \textit{lazy constraints}. In questo modo si ottiene un vero algoritmo Branch-and-Cut.
+Al termine si ottiene un tour hamiltoniano unico: il codice ricostruisce la sequenza ordinata degli archi a partire dal deposito, calcola la distanza totale in metri (\texttt{step3\_integer\_solution}) e il tempo complessivo di percorrenza sommando le durate su ciascun arco (\texttt{final\_time}).
+
+\subsection{Formulazione MTZ}
+
+La funzione \texttt{solve\_mtz} implementa la formulazione di Miller–Tucker–Zemlin, composta da un rilassamento continuo e da un modello intero con vincoli MTZ.  
+Nel rilassamento si introducono variabili di posizionamento \(u_i\in[0,n-1]\) e vincoli \(u_i - u_j + n x_{ij} \le n-1\) per tutti i nodi diversi dal deposito, ottenendo un bound continuo alternativo rispetto alla formulazione a tagli. 
+
+Per la soluzione intera, il modello MTZ viene ricostruito con variabili binarie e risolto con un limite di tempo di 300 secondi, registrando l’eventuale valore ottimo e il tempo necessario.
+Nel caso con 50 nodi il bound continuo MTZ risulta di circa \(100\,089\) m, mentre la soluzione intera richiede l’intero time limit per raggiungere il valore dell’ottimo trovato con il Cut-Set.
+
+\subsection{Visualizzazione geospaziale}
+
+Per visualizzare il tour ottimo su mappa, lo script utilizza \texttt{geopandas}, \texttt{shapely} e \texttt{contextily}.
+La funzione \texttt{plot\_solution\_on\_map} chiama per ogni arco ottimo l’API \texttt{directions} di OpenRouteService per recuperare la geometria stradale reale, che viene poi rappresentata come \texttt{LineString} su una basemap OpenStreetMap insieme ai punti delle località.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{TSP_Map_CutSet_Final_50_Nodes.png}
+\caption{Mappa del tour ottimo con 50 nodi ottenuto tramite formulazione Cut-Set.}
+\label{fig:map_cutset}
+\end{figure}
+
+La Figura~\ref{fig:map_cutset} mostra il percorso ottimo di circa 127.20 km e 264 minuti che attraversa Cagliari, Quartu Sant’Elena e l’hinterland, con i nodi numerati in corrispondenza delle località principali.
+
+\newpage
+% -------------------------------------------------------------------
+\section{Risultati Sperimentali}
+
+\subsection{Confronto tra Cut-Set e MTZ}
+
+Per confrontare le due formulazioni sono state costruite tabelle che riportano, per ogni metodo e fase, il bound ottenuto e il tempo di calcolo.
+La Tabella~\ref{tab:confronto} evidenzia che il rilassamento Cut-Set fornisce un bound iniziale di 103432.24 m, migliorato a 124552.65 m dopo l’aggiunta dei tagli; l’ottimo intero raggiunge 127203.93 m in 1.5425 s. La formulazione MTZ presenta un bound continuo di 104007.81 m e raggiunge lo stesso ottimo intero (127203.93 m) in 8.2265 s, esplorando 24404 nodi. Inoltre, a fine ricerca MTZ riporta BestBound = 127191.36 m e MIPGap = 0.000099, mentre Cut-Set chiude con MIPGap nullo.
+
+Per completezza, viene riportato anche il numero di nodi esplorati nell’albero di Branch-and-Bound, così da confrontare direttamente la dimensione della ricerca.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{Tabella_Confronto_Risultati.png}
+\caption{Confronto tra formulazione Cut-Set e MTZ in termini di bound (m) e tempi di calcolo (s).}
+\label{tab:confronto}
+\end{figure}
+\subsection{KPI Albero Branch-and-Bound}
+
+Per valutare l’impatto dell’implementazione dei tagli sull’esplorazione dell’albero, sono state confrontate tre configurazioni: (i) Cut-Set con aggiunta iterativa di SEC (\textit{loop cuts}), (ii) Cut-Set con \textit{lazy/user cuts} tramite callback, e (iii) MTZ risolto come MIP.
+I risultati in Figura~\ref{tab:kpi_bnb} mostrano che Cut-Set con \textit{lazy/user cuts} riduce il tempo totale a 0.4712 s, a fronte di 145 nodi esplorati; la variante \textit{loop cuts} chiude invece all’origine (Nodes = 0) ma impiega 1.5425 s per via delle ripetute ri-ottimizzazioni dopo ogni blocco di tagli. La formulazione MTZ richiede 8.2265 s ed esplora 24404 nodi, confermando una ricerca molto più ampia.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{Tabella_KPI_Albero_BnB.png}
+\caption{KPI dell’albero di Branch-and-Bound per diverse configurazioni: Cut-Set con \textit{loop cuts}, Cut-Set con \textit{lazy/user cuts} e MTZ (MIP).}
+\label{tab:kpi_bnb}
+\end{figure}
+
+
+\subsection{Analisi dei GAP}
+
+La qualità dei rilassamenti è stata misurata tramite il GAP percentuale rispetto all’ottimo intero Cut-Set, calcolato come
+\[
+\text{GAP} = \frac{z^{\text{int}} - z^{\text{LP}}}{z^{\text{int}}}\cdot 100,
+\]
+dove \(z^{\text{int}}\) è il valore ottimo intero e \(z^{\text{LP}}\) il bound continuo.  
+La Tabella~\ref{tab:gap} mostra che il GAP iniziale della formulazione MTZ è pari a 18.24\%, quello iniziale del Cut-Set è 18.69\%, mentre dopo l’aggiunta dei tagli il GAP del Cut-Set scende a 2.08\%, segnalando un rilassamento molto più stretto.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\textwidth]{Tabella_Gap_Analysis.png}
+\caption{Analisi dei GAP percentuali delle due formulazioni rispetto all’ottimo intero Cut-Set.}
+\label{tab:gap}
+\end{figure}
+
+\newpage
+% -------------------------------------------------------------------
+\section{Analisi e Discussione}
+
+\subsection{Caso di studio su Cagliari}
+
+Le località considerate comprendono il deposito di partenza, diversi poli universitari, ospedali e punti di interesse dell’area metropolitana di Cagliari, fino a coprire 50 nodi complessivi. 
+La mappa finale conferma che il tour ottimizzato segue la struttura reale della rete stradale, includendo i collegamenti principali verso Quartu Sant’Elena, l’area del Poetto e la zona industriale occidentale.  
+
+\subsection{Valutazione delle prestazioni}
+
+Dal confronto emerge che la formulazione Cut-Set parte da un rilassamento iniziale pari a 103432.24 m, ma grazie ai tagli il bound LP sale a 124552.65 m con un GAP residuo del 2.08\% rispetto all’ottimo di 127203.93 m.
+La formulazione MTZ presenta un bound continuo di 104007.81 m e richiede circa 8.2265 s per raggiungere lo stesso valore ottimo, risultando quindi meno efficiente sul caso di studio considerato.
+
+% -------------------------------------------------------------------
+\section{Conclusioni}
+
+Lo studio mostra come l’integrazione tra modelli di programmazione matematica, servizi cartografici online e librerie Python per l’ottimizzazione consenta di affrontare in modo efficace problemi logistici reali quali la pianificazione di un percorso di distribuzione su rete stradale.
+La formulazione Cut-Set con schema Branch-and-Cut si dimostra particolarmente adatta al caso di studio: fornisce soluzioni ottime in tempi ridotti e permette di analizzare in modo dettagliato l’evoluzione del bound e dei sottotour, offrendo uno strumento flessibile per futuri ampliamenti del modello (vincoli di capacità, finestre temporali, più veicoli). 
+
+\end{document}
