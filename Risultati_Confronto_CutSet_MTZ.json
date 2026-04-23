@@ -1,0 +1,65 @@
+[
+  {
+    "Metodo":"Cut Set",
+    "Fase":"1. Rilassamento LP",
+    "Bound (m)":"105016.28",
+    "Tempo (s)":"0.1020",
+    "Nodes":0,
+    "BestBound":null,
+    "MIPGap":null
+  },
+  {
+    "Metodo":"Cut Set",
+    "Fase":"2. Post-Tagli (LP)",
+    "Bound (m)":"123836.09",
+    "Tempo (s)":"0.0326",
+    "Nodes":0,
+    "BestBound":null,
+    "MIPGap":null
+  },
+  {
+    "Metodo":"Cut Set",
+    "Fase":"3. Ottimo Intero",
+    "Bound (m)":"125848.68",
+    "Tempo (s)":"0.6518",
+    "Nodes":0,
+    "BestBound":125839.79,
+    "MIPGap":0.0000706404
+  },
+  {
+    "Metodo":"MTZ",
+    "Fase":"Rilassamento LP",
+    "Bound (m)":"105522.24",
+    "Tempo (s)":"0.0572",
+    "Nodes":0,
+    "BestBound":null,
+    "MIPGap":null
+  },
+  {
+    "Metodo":"MTZ",
+    "Fase":"Ottimo Intero",
+    "Bound (m)":"125848.68",
+    "Tempo (s)":"300.0637",
+    "Nodes":1188011,
+    "BestBound":123514.7902941177,
+    "MIPGap":0.0185452061
+  },
+  {
+    "Metodo":"MTZ (Radice Virtuale)",
+    "Fase":"Rilassamento LP",
+    "Bound (m)":"105536.05",
+    "Tempo (s)":"0.0802",
+    "Nodes":0,
+    "BestBound":null,
+    "MIPGap":null
+  },
+  {
+    "Metodo":"MTZ (Radice Virtuale)",
+    "Fase":"Ottimo Intero",
+    "Bound (m)":"125848.68",
+    "Tempo (s)":"7.9526",
+    "Nodes":11333,
+    "BestBound":125836.217366286,
+    "MIPGap":0.0000990287
+  }
+]

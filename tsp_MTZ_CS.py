@@ -22,10 +22,9 @@ except Exception:
 
 api_key = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjYwM2NhMmFjM2ExYzI1MTJlZGY2YjNjZjJjMDIxNjQ3NGQ5ZjNkZmRkZWU0Nzc4NzNiMTc3MjIwIiwiaCI6Im11cm11cjY0In0='
 
-
-
 # --- DEFINIZIONE LOCATION ---
 base_locations = [
+    {"name": "Deposito (Via S. Paolo)", "coords": (39.263557, 9.076127)},
     {"name": "Bastione Saint Remy", "coords": (39.2155, 9.1165)},
     {"name": "Anfiteatro Romano", "coords": (39.2238, 9.1098)},
     {"name": "Orto Botanico", "coords": (39.2230, 9.1080)},
@@ -54,7 +53,6 @@ base_locations = [
     {"name": "Sestu Centro", "coords": (39.3000, 9.0900)},
     {"name": "Policlinico (Ingresso)", "coords": (39.2600, 9.1200)},
     {"name": "Cantine Monserrato", "coords": (39.2550, 9.1450)},
-    {"name": "Deposito (Via S. Paolo)", "coords": (39.263557, 9.076127)},
     {"name": "Palazzo Delle Scienze", "coords": (39.222562, 9.114185)},
     {"name": "Facoltà Ingegneria", "coords": (39.229741, 9.108604)},
     {"name": "Osp. Santissima Trinità", "coords": (39.235543, 9.108285)},
@@ -612,7 +610,7 @@ def solve_mtz(dist_matrix, dur_matrix, locations):
                 mdl_mtz_int.add_constraint(u_int[i] - u_int[j] + n * x_int[(i, j)] <= n - 1)
     
     mdl_mtz_int.set_time_limit(300) # 300 secondi max
-    sol_int = mdl_mtz_int.solve(log_output=False)
+    sol_int = mdl_mtz_int.solve(log_output=True)
     results['int_kpis'] = extract_kpis(mdl_mtz_int)
     
     results['int_time'] = time.time() - t0
@@ -625,7 +623,91 @@ def solve_mtz(dist_matrix, dur_matrix, locations):
 
     return results
 
-def generate_comparison_outputs(cutset, mtz):
+def solve_mtz_virtual_root(dist_matrix, dur_matrix, locations, virtual_root_id):
+    """Risolve TSP con formulazione MTZ usando un nodo radice virtuale centrale.
+
+    I vincoli di ordinamento MTZ escludono `virtual_root_id` invece del deposito
+    fisico, sfruttando la proprietà che un ciclo hamiltoniano non ha punto di
+    partenza fisso: il tour ottimo ottenuto è identico a quello con qualunque
+    altra radice.
+    """
+    vr_name = locations[virtual_root_id]["name"]
+    print("\n" + "="*80)
+    print(f"ANALISI MTZ - NODO RADICE VIRTUALE: {vr_name} (id={virtual_root_id})")
+    print("="*80)
+
+    results = {
+        'continuous_relaxation': None, 'lp_time': 0,
+        'lp_kpis': {},
+        'integer_solution': None, 'int_time': 0,
+        'int_kpis': {},
+        'final_edges': None,
+        'virtual_root_id': virtual_root_id,
+    }
+
+    cities_non_vr = [i for i in cities if i != virtual_root_id]
+
+    # 1. Rilassamento Continuo MTZ
+    print(f"\n[MTZ VR - Calcolo Rilassamento Continuo (radice={vr_name})...]")
+    t0 = time.time()
+
+    mdl_lp = Model('TSP_MTZ_VR_LP')
+    x = mdl_lp.continuous_var_dict(arcs, lb=0, ub=1, name='x')
+    u = mdl_lp.continuous_var_dict(cities, lb=0, ub=n-1, name='u')
+
+    mdl_lp.minimize(mdl_lp.sum(dist_matrix[i][j] * x[(i, j)] for i, j in arcs))
+
+    for i in cities:
+        mdl_lp.add_constraint(mdl_lp.sum(x[(i, j)] for j in cities if i != j) == 1)
+        mdl_lp.add_constraint(mdl_lp.sum(x[(j, i)] for j in cities if i != j) == 1)
+
+    for i in cities_non_vr:
+        for j in cities_non_vr:
+            if i != j:
+                mdl_lp.add_constraint(u[i] - u[j] + n * x[(i, j)] <= n - 1)
+
+    sol_lp = mdl_lp.solve(log_output=False)
+    results['lp_kpis'] = extract_kpis(mdl_lp)
+    results['lp_time'] = time.time() - t0
+
+    if sol_lp:
+        results['continuous_relaxation'] = sol_lp.objective_value
+        print(f">> Bound MTZ VR (LP): {sol_lp.objective_value:.2f} m | Tempo: {results['lp_time']:.4f} s")
+
+    # 2. Soluzione Intera MTZ
+    print(f"\n[MTZ VR - Calcolo Soluzione Intera (radice={vr_name})...]")
+    t0 = time.time()
+
+    mdl_int = Model('TSP_MTZ_VR_Int')
+    x_int = mdl_int.binary_var_dict(arcs, name='x')
+    u_int = mdl_int.continuous_var_dict(cities, lb=0, ub=n-1, name='u')
+
+    mdl_int.minimize(mdl_int.sum(dist_matrix[i][j] * x_int[(i, j)] for i, j in arcs))
+
+    for i in cities:
+        mdl_int.add_constraint(mdl_int.sum(x_int[(i, j)] for j in cities if i != j) == 1)
+        mdl_int.add_constraint(mdl_int.sum(x_int[(j, i)] for j in cities if i != j) == 1)
+
+    for i in cities_non_vr:
+        for j in cities_non_vr:
+            if i != j:
+                mdl_int.add_constraint(u_int[i] - u_int[j] + n * x_int[(i, j)] <= n - 1)
+
+    mdl_int.set_time_limit(300)
+    sol_int = mdl_int.solve(log_output=True)
+    results['int_kpis'] = extract_kpis(mdl_int)
+    results['int_time'] = time.time() - t0
+
+    if sol_int:
+        results['integer_solution'] = sol_int.objective_value
+        print(f">> Soluzione Intera MTZ VR: {sol_int.objective_value:.2f} m | Tempo: {results['int_time']:.4f} s")
+    else:
+        print(f"Time limit o nessuna soluzione (Tempo: {results['int_time']:.4f} s)")
+
+    return results
+
+
+def generate_comparison_outputs(cutset, mtz, mtz_vr=None):
     print("\n" + "="*80)
     print(f"{'GENERAZIONE TABELLE COMPARATIVE':^80}")
     print("="*80)
@@ -705,7 +787,44 @@ def generate_comparison_outputs(cutset, mtz):
             'BestBound': k.get('best_bound', None),
             'MIPGap': k.get('mip_relative_gap', None),
         })
-        
+
+    # MTZ RADICE VIRTUALE ROWS
+    if mtz_vr is not None:
+        if mtz_vr['continuous_relaxation']:
+            k = mtz_vr.get('lp_kpis', {})
+            data.append({
+                'Metodo': 'MTZ (Radice Virtuale)',
+                'Fase': 'Rilassamento LP',
+                'Bound (m)': f"{mtz_vr['continuous_relaxation']:.2f}",
+                'Tempo (s)': f"{mtz_vr['lp_time']:.4f}",
+                'Nodes': k.get('nb_nodes_processed', None),
+                'BestBound': k.get('best_bound', None),
+                'MIPGap': k.get('mip_relative_gap', None),
+            })
+
+        if mtz_vr['integer_solution']:
+            k = mtz_vr.get('int_kpis', {})
+            data.append({
+                'Metodo': 'MTZ (Radice Virtuale)',
+                'Fase': 'Ottimo Intero',
+                'Bound (m)': f"{mtz_vr['integer_solution']:.2f}",
+                'Tempo (s)': f"{mtz_vr['int_time']:.4f}",
+                'Nodes': k.get('nb_nodes_processed', None),
+                'BestBound': k.get('best_bound', None),
+                'MIPGap': k.get('mip_relative_gap', None),
+            })
+        else:
+            k = mtz_vr.get('int_kpis', {})
+            data.append({
+                'Metodo': 'MTZ (Radice Virtuale)',
+                'Fase': 'Ottimo Intero',
+                'Bound (m)': 'Timeout',
+                'Tempo (s)': f"{mtz_vr['int_time']:.4f}",
+                'Nodes': k.get('nb_nodes_processed', None),
+                'BestBound': k.get('best_bound', None),
+                'MIPGap': k.get('mip_relative_gap', None),
+            })
+
     df = pd.DataFrame(data)
     df_out = format_table_for_rendering(df)
     print(df_out.to_string(index=False))
@@ -737,7 +856,7 @@ def generate_comparison_outputs(cutset, mtz):
     save_table_img(df_gap, "Analisi dei GAP (Efficienza Formulazione)", "Tabella_Gap_Analysis.png")
 
 
-def generate_tree_kpi_table(cutset_tracking, cutset_callbacks, mtz):
+def generate_tree_kpi_table(cutset_tracking, cutset_callbacks, mtz, mtz_vr=None):
     """Generates a KPI table focused on B&B tree size and solve effort."""
     rows = []
 
@@ -769,6 +888,16 @@ def generate_tree_kpi_table(cutset_tracking, cutset_callbacks, mtz):
         'Tempo (s)': f"{mtz.get('int_time', 0):.4f}",
     })
 
+    if mtz_vr is not None:
+        k_vr = mtz_vr.get('int_kpis', {})
+        rows.append({
+            'Metodo': 'MTZ (Radice Virtuale)',
+            'Nodes': k_vr.get('nb_nodes_processed', None),
+            'BestBound': k_vr.get('best_bound', None),
+            'MIPGap': k_vr.get('mip_relative_gap', None),
+            'Tempo (s)': f"{mtz_vr.get('int_time', 0):.4f}",
+        })
+
     df = pd.DataFrame(rows)
     print("\n" + "=" * 80)
     print(f"{'KPI ALBERO BRANCH-AND-BOUND':^80}")
@@ -799,18 +928,24 @@ if __name__ == "__main__":
         print(f"Errore API: {e}")
         sys.exit(1)
 
+    # Indice del nodo radice virtuale (Bastione Saint Remy: nodo centrale)
+    bastione_id = next(i for i, loc in enumerate(locations) if loc["name"] == "Bastione Saint Remy")
+
     # 1. Esegui Cut Set Analysis
     res_cutset = solve_cutset_with_tracking(dist_matrix, dur_matrix, locations)
 
     # 1b. Esegui Cut Set con Lazy/User cuts (se disponibili)
     res_cutset_cb = solve_cutset_with_callbacks(dist_matrix, dur_matrix, locations, log_output=False)
-    
-    # 2. Esegui MTZ Analysis
+
+    # 2. Esegui MTZ Analysis (radice = deposito fisico)
     res_mtz = solve_mtz(dist_matrix, dur_matrix, locations)
-    
-    # 3. Tabelle e PNG
-    generate_comparison_outputs(res_cutset, res_mtz)
-    generate_tree_kpi_table(res_cutset, res_cutset_cb, res_mtz)
+
+    # 3. Esegui MTZ Analysis con radice virtuale centrale (Bastione Saint Remy)
+    res_mtz_vr = solve_mtz_virtual_root(dist_matrix, dur_matrix, locations, bastione_id)
+
+    # 4. Tabelle e PNG
+    generate_comparison_outputs(res_cutset, res_mtz, mtz_vr=res_mtz_vr)
+    generate_tree_kpi_table(res_cutset, res_cutset_cb, res_mtz, mtz_vr=res_mtz_vr)
     
     # 4. Plot Mappa Finale
     if res_cutset['final_edges']:

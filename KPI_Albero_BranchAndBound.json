@@ -1,0 +1,30 @@
+[
+  {
+    "Metodo":"Cut Set (loop cuts)",
+    "Nodes":0,
+    "BestBound":125839.79,
+    "MIPGap":0.0000706404,
+    "Tempo (s)":"0.6518"
+  },
+  {
+    "Metodo":"Cut Set (lazy\/user cuts)",
+    "Nodes":96,
+    "BestBound":125848.68,
+    "MIPGap":0.0,
+    "Tempo (s)":"0.4026"
+  },
+  {
+    "Metodo":"MTZ (MIP)",
+    "Nodes":1188011,
+    "BestBound":123514.7902941177,
+    "MIPGap":0.0185452061,
+    "Tempo (s)":"300.0637"
+  },
+  {
+    "Metodo":"MTZ (Radice Virtuale)",
+    "Nodes":11333,
+    "BestBound":125836.217366286,
+    "MIPGap":0.0000990287,
+    "Tempo (s)":"7.9526"
+  }
+]
